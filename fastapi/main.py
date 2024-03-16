@@ -17,7 +17,7 @@ from tools.audio_video_separator import router as av_router
 from tools.youtube_downloader import router as yt_router
 from tools.transcribe_media import router as tm_router
 from tools.bulk_image_compressor import router as bic_router
-from tools.instagram_reel_downloader import router as ir_router  # Import the Instagram reel downloader router
+from tools.instagram_downloader import router as ir_router  # Import the Instagram reel downloader router
 from tools.instagram_audio_video_analyzer import router as iava_router
 
 app = FastAPI()
