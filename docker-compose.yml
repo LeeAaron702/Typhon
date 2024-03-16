@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  fastapi:
+    build: ./fastapi
+    # command: gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:8000 --timeout 1800
+    command: uvicorn main:app --reload --host=0.0.0.0 --port=8000
+    volumes:
+      - ./fastapi:/app
+    ports:
+      - "8000:8000"
+
+  frontend:
+    image: node:lts-bullseye
+    command: /bin/bash -c "./run.sh"
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+    environment:
+      HOST_OS: ${OS}
+      NODE_ENV: development
+      HOST: "0.0.0.0"
+      PUBLIC_URL: http://localhost:3000
+      REACT_APP_USER_SERVICE_API_HOST: http://192.168.0.175:8000
