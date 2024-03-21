@@ -15,10 +15,14 @@ from utils.logger import log_user_activity, DISCORD_WEBHOOK_URL
 
 from tools.audio_video_separator import router as av_router
 from tools.youtube_downloader import router as yt_router
-from tools.transcribe_media import router as tm_router
+from tools.youtube_download_transcribe_media import router as tm_router
 from tools.bulk_image_compressor import router as bic_router
 from tools.instagram_downloader import router as ir_router  # Import the Instagram reel downloader router
 from tools.instagram_audio_video_analyzer import router as iava_router
+from tools.calculate_token_count import router as tc_router
+from tools.youtube_download_transcribe_and_count_tokens import router as ydtact_router
+
+
 
 app = FastAPI()
 
@@ -40,6 +44,8 @@ app.include_router(tm_router, prefix="/tools")
 app.include_router(bic_router, prefix="/tools")
 app.include_router(ir_router, prefix="/tools") 
 app.include_router(iava_router, prefix="/tools") 
+app.include_router(tc_router, prefix="/tools") 
+app.include_router(ydtact_router, prefix="/tools") 
 
 models.Base.metadata.create_all(bind=engine)
 
