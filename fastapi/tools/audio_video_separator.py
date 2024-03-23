@@ -1,86 +1,75 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Depends, Request
+from enum import Enum
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Depends
 from fastapi.responses import FileResponse
 from moviepy.editor import VideoFileClip
-from pytube import YouTube
-from enum import Enum
 import os
-from auth import get_current_user
 from pathlib import Path
-import re
-import shutil
+import zipfile
+
+from auth import get_current_user
 from utils.logger import log_user_activity
-
-
-class ReturnType(str, Enum):
-    audio = "audio"
+from .instagram_downloader import download_instagram_content_for_processing
+from .youtube_downloader import download_youtube_video_util
 
 router = APIRouter()
 
-# Change this to the directory where processed files will be stored
 PROCESSED_DIR = "processed"
 
-SUPPORTED_FILE_TYPES = ["mp4", "mov", "avi", "mkv"]
+@router.post("/extract_and_package_media/", tags=['Download Youtube or Instagram Video & Audio'])
+async def extract_and_package_media(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    source_url: str,
+    user: dict = Depends(get_current_user),
+):
+    source_type = determine_source_type(source_url)
+    if source_type == "unsupported":
+        raise HTTPException(status_code=400, detail="Unsupported URL type provided.")
 
-def safe_filename(filename: str) -> str:
-    # Remove invalid characters from the filename
-    return re.sub(r'[\\/*?:"<>|]', "", filename)
-
-@router.post("/download_extract_audio/", tags=['Extract Audio From Youtube'])
-async def extract_audio(request: Request, background_tasks: BackgroundTasks, return_type: ReturnType = ReturnType.audio, youtube_url: str = None, file: UploadFile = File(None), user: dict = Depends(get_current_user)):
-    if youtube_url:
-        source = "YouTube URL"
-    elif file:
-        source = "Uploaded File"
-    else:
-        raise HTTPException(status_code=400, detail="No input source provided.")
+    audio_path, content_dir = extract_audio(source_url, source_type, PROCESSED_DIR)
     
-    file_name = None
-    if youtube_url:
-        yt = YouTube(youtube_url)
-        video = yt.streams.filter(file_extension='mp4', progressive=True).order_by('resolution').desc().first()
-        if not video:
-            raise HTTPException(status_code=404, detail="No suitable video found.")
-        # Use video title for the filename
-        file_name = safe_filename(yt.title)
-        video_path = os.path.join(PROCESSED_DIR, f"{file_name}.mp4")
-        video.download(filename=video_path)
-    elif file:
-        if file.filename.split('.')[-1].lower() not in SUPPORTED_FILE_TYPES:
-            raise HTTPException(status_code=400, detail=f"Unsupported file type. Supported types: {', '.join(SUPPORTED_FILE_TYPES)}")
-        file_name = Path(file.filename).stem
-        video_path = os.path.join(PROCESSED_DIR, f"{file_name}.mp4")
-        with open(video_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    else:
-        raise HTTPException(status_code=400, detail="No input source provided.")
-
-    if not file_name:
-        raise HTTPException(status_code=500, detail="Failed to determine the file name.")
-
-    clip = VideoFileClip(video_path)
+    # Create a zip file of the content directory
+    zip_file_path = os.path.join(PROCESSED_DIR, f"{Path(content_dir).stem}_media_package.zip")
+    with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(content_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                zipf.write(file_path, arcname=os.path.relpath(file_path, content_dir))
     
-    if return_type == ReturnType.audio:
-        audio_filename = f"{file_name}.mp3"
-        audio_path = os.path.join(PROCESSED_DIR, audio_filename)
-        clip.audio.write_audiofile(audio_path)
-        file_path = audio_path
-        media_type = 'audio/mpeg'
-    else:
-        # If you ever want to support returning the video file itself
-        media_type = 'video/mp4'
-        audio_filename = f"{file_name}.mp4"
-    
-    if youtube_url:
-        action = f"extracted audio from YouTube video: {yt.title}"
-    elif file:
-        action = f"extracted audio from uploaded file: {file.filename}"
-    else:
-        action = "attempted audio extraction but failed due to lack of input source"
-        
+    action = f"Packaged media from {source_type}: {source_url}"
     log_user_activity(request, background_tasks, user['username'], action)
-    
-    response = FileResponse(path=file_path, media_type=media_type, filename=audio_filename)
 
-    return response
+    return FileResponse(path=zip_file_path, media_type='application/zip', filename=os.path.basename(zip_file_path))
 
+def determine_source_type(url: str) -> str:
+    if "instagram.com" in url:
+        return "instagram"
+    elif "youtube.com" in url or "youtu.be" in url:
+        return "youtube"
+    return "unsupported"
 
+def extract_audio(url: str, source_type: str, output_dir: str) -> str:
+    if source_type == "youtube":
+        return extract_audio_from_youtube(url, output_dir)
+    elif source_type == "instagram":
+        return extract_audio_from_instagram(url, output_dir)
+
+def extract_audio_from_youtube(url: str, output_dir: str) -> (str, str):
+    download_info = download_youtube_video_util(url, output_dir)
+    video_path = download_info["video_path"]
+    video_dir = Path(video_path).parent  # This will be the directory containing the video file.
+    clip = VideoFileClip(video_path)
+    audio_path = video_path.replace(".mp4", ".mp3")
+    clip.audio.write_audiofile(audio_path)
+    return audio_path, str(video_dir)  # Return both the audio path and the directory.
+
+def extract_audio_from_instagram(url: str, output_dir: str) -> (str, str):
+    content_dir, _ = download_instagram_content_for_processing(url, output_dir)
+    video_files = list(Path(content_dir).glob("*.mp4"))
+    if not video_files:
+        raise Exception("No video file found in downloaded Instagram content.")
+    video_path = str(video_files[0])
+    clip = VideoFileClip(video_path)
+    audio_path = os.path.join(content_dir, Path(video_path).stem + ".mp3")
+    clip.audio.write_audiofile(audio_path)
+    return audio_path, content_dir  # Return both the audio path and the directory.

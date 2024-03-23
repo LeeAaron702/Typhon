@@ -13,16 +13,18 @@ import auth
 from auth import get_current_user
 from utils.logger import log_user_activity, DISCORD_WEBHOOK_URL
 
-from tools.audio_video_separator import router as av_router
-from tools.youtube_downloader import router as yt_router
-from tools.youtube_download_transcribe_media import router as tm_router
-from tools.bulk_image_compressor import router as bic_router
-from tools.instagram_downloader import router as ir_router  # Import the Instagram reel downloader router
+# from tools.youtube_download_transcribe_media import router as tm_router
+# from tools.bulk_image_compressor import router as bic_router
 from tools.instagram_audio_video_analyzer import router as iava_router
-from tools.calculate_token_count import router as tc_router
-from tools.youtube_download_transcribe_and_count_tokens import router as ydtact_router
+# from tools.calculate_token_count import router as tc_router
+# from tools.youtube_download_transcribe_and_count_tokens import router as ydtact_router
 
-
+from tools.youtube_downloader import router as yt_router
+from tools.instagram_downloader import router as id_router 
+from tools.audio_video_separator import router as av_router
+from tools.transcribe_media import router as tm_router 
+from tools.token_counter import router as tc_router
+from tools.video_analysis import router as va_router
 
 app = FastAPI()
 
@@ -40,12 +42,16 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(av_router, prefix="/tools")
 app.include_router(yt_router, prefix="/tools")
-app.include_router(tm_router, prefix="/tools")
-app.include_router(bic_router, prefix="/tools")
-app.include_router(ir_router, prefix="/tools") 
-app.include_router(iava_router, prefix="/tools") 
+app.include_router(id_router, prefix="/tools") 
+app.include_router(tm_router, prefix="/tools") 
 app.include_router(tc_router, prefix="/tools") 
-app.include_router(ydtact_router, prefix="/tools") 
+app.include_router(va_router, prefix="/tools") 
+
+# app.include_router(tm_router, prefix="/tools")
+# app.include_router(bic_router, prefix="/tools")
+# app.include_router(iava_router, prefix="/tools") 
+# app.include_router(ydtact_router, prefix="/tools") 
+# app.include_router(ct_router, prefix="/tools") 
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -75,11 +81,11 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
             await client.post(DISCORD_WEBHOOK_URL, json=data)
     return JSONResponse(content={"detail": exc.detail}, status_code=exc.status_code)
 
-@app.get("/", tags=['Authentication'], status_code=status.HTTP_200_OK)
-async def user(request: Request, background_tasks: BackgroundTasks, user: user_dependency, db: db_dependency):
-    if user is None:
-        raise HTTPException(status_code=401, detail='Authentication Failed')
+# @app.get("/", tags=['Authentication'], status_code=status.HTTP_200_OK)
+# async def user(request: Request, background_tasks: BackgroundTasks, user: user_dependency, db: db_dependency):
+#     if user is None:
+#         raise HTTPException(status_code=401, detail='Authentication Failed')
     
-    log_user_activity(request, background_tasks, user['username'], "accessed the auth function")
+#     log_user_activity(request, background_tasks, user['username'], "accessed the auth function")
     
-    return {"User": user}
+#     return {"User": user}

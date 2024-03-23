@@ -155,10 +155,11 @@ async def generate_final_summary(descriptions: List[str], transcription: str, vi
     - Strive for precision and clarity, tailoring the summary for a technical audience and ensuring it highlights the most innovative and pertinent aspects of the technology presented.
     - 500 tokens or 2000 characters max
     Frame Descriptions: {aggregated_descriptions}
-    The audio transcription might be lyrics, if they are disregard. 
-    Audio Transcription: {transcription}
+    
 
     """
+    # The audio transcription might be lyrics, if they are disregard. 
+    # Audio Transcription: {transcription}
     #     Summarize the video content based on the frame descriptions and audio transcription.
     # Begin with a one-paragraph overview that encapsulates the main points from the descriptions and transcription.
     # Then list any mentioned software names followed by their respective URLs, if available.

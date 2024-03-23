@@ -17,10 +17,82 @@ class InstagramContentRequest(BaseModel):
     content_url: str
 
 PROCESSED_DIR = "processed/content"
-content_pattern = re.compile(r'https?://www.instagram.com/(reel|p)/([^/?#&]+)')
 
 # Configure Instaloader for a wider range of content
 L = instaloader.Instaloader(download_pictures=True, download_videos=True, download_video_thumbnails=True, download_comments=False, save_metadata=True, post_metadata_txt_pattern='')
+
+def download_instagram_content_util(content_url, content_specific_dir):
+    """
+    Parses the Instagram content URL to extract the shortcode, then downloads Instagram content to a specified directory and creates a zip file.
+    
+    :param content_url: The full URL of the Instagram content to download.
+    :param content_specific_dir: The directory to save the downloaded content.
+    :return: Path to the created zip file.
+    """
+    content_pattern = re.compile(r'https?://www.instagram.com/(reel|p)/([^/?#&]+)')
+    match = content_pattern.search(content_url)
+    if not match:
+        raise ValueError("Invalid Instagram URL format.")
+    
+    shortcode = match.group(2)
+    
+    try:
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        L.download_post(post, target=Path(content_specific_dir))
+
+        caption_file_path = os.path.join(content_specific_dir, f"{shortcode}_caption.txt")
+        with open(caption_file_path, "w", encoding="utf-8") as f:
+            f.write(post.caption if post.caption else "No caption")
+
+        zip_file_path = os.path.join(PROCESSED_DIR, f"{shortcode}.zip")
+        with zipfile.ZipFile(zip_file_path, 'w') as zipf:
+            for item in Path(content_specific_dir).iterdir():
+                if item.is_file():
+                    zipf.write(item, arcname=item.name)
+        return zip_file_path
+    except Exception as e:
+        raise e
+    
+
+# Configure Instaloader instance
+L = instaloader.Instaloader(download_pictures=True, download_videos=True, download_video_thumbnails=True, download_comments=False, save_metadata=True, post_metadata_txt_pattern='')
+
+def download_instagram_content_for_processing(content_url: str, output_dir: str) -> (str, str):
+    """
+    Downloads Instagram content to a specified directory for further processing.
+
+    Args:
+    content_url (str): The full URL of the Instagram content to download.
+    output_dir (str): The directory where the content should be downloaded.
+
+    Returns:
+    Tuple[str, str]: A tuple containing the path to the directory where the content was downloaded, and the shortcode of the Instagram content.
+    """
+    # Pattern to match Instagram content URLs and extract the shortcode
+    content_pattern = re.compile(r'https?://www.instagram.com/(reel|p)/([^/?#&]+)')
+    match = content_pattern.search(content_url)
+    if not match:
+        raise ValueError("Invalid Instagram URL format.")
+    
+    shortcode = match.group(2)
+    content_specific_dir = os.path.join(output_dir, shortcode)
+    
+    # Ensure the output directory exists
+    os.makedirs(content_specific_dir, exist_ok=True)
+    
+    try:
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        L.download_post(post, target=Path(content_specific_dir))
+
+        # Optionally, write the caption to a file
+        caption_file_path = os.path.join(content_specific_dir, f"{shortcode}_caption.txt")
+        with open(caption_file_path, "w", encoding="utf-8") as f:
+            f.write(post.caption if post.caption else "No caption")
+        
+        return (content_specific_dir, shortcode)
+    except Exception as e:
+        raise Exception(f"Failed to download Instagram content: {str(e)}")
+
 
 @router.post("/download_instagram_content/", tags=["Download Instagram Content"], response_class=FileResponse)
 async def download_instagram_content(
@@ -29,47 +101,23 @@ async def download_instagram_content(
     content_request: InstagramContentRequest,  # Renamed for clarity
     user: dict = Depends(get_current_user),
 ):
-    # Access the content_url string within the InstagramContentRequest object
     content_url_str = content_request.content_url
-
-    if not content_url_str:  # Check if the URL string is empty or not provided
+    if not content_url_str:
         raise HTTPException(status_code=400, detail="Instagram content URL must be provided.")
 
-    content_match = content_pattern.search(content_url_str)  # Use the string for searching
-    if not content_match:
-        raise HTTPException(status_code=400, detail="Invalid Instagram content URL.")
-
-    shortcode = content_match.group(2)
-    content_specific_dir = os.path.join(PROCESSED_DIR, shortcode)
+    shortcode = None  # Initialization before extraction in the utility function
+    content_specific_dir = os.path.join(PROCESSED_DIR, "temp")  # Temp directory placeholder
 
     if not os.path.exists(content_specific_dir):
         os.makedirs(content_specific_dir, exist_ok=True)
 
     try:
-        # Download the post or reel using Instaloader
-        post = instaloader.Post.from_shortcode(L.context, shortcode)
-        L.download_post(post, target=Path(content_specific_dir))
-
-        # Save the caption text to a .txt file in the same directory
-        caption_file_path = os.path.join(content_specific_dir, f"{shortcode}_caption.txt")
-        with open(caption_file_path, "w", encoding="utf-8") as f:
-            f.write(post.caption if post.caption else "No caption")
-
-        # Include the downloaded content and the caption file in a zip file
-        zip_file_path = os.path.join(PROCESSED_DIR, f"{shortcode}.zip")
-        with zipfile.ZipFile(zip_file_path, 'w') as zipf:
-            for item in Path(content_specific_dir).iterdir():
-                if item.is_file():
-                    zipf.write(item, arcname=item.name)
-
-        # Log the successful download along with the caption
+        zip_file_path = download_instagram_content_util(content_url_str, content_specific_dir)
         action = f"successfully downloaded Instagram content and caption: {content_url_str}"
-        log_user_activity(request, background_tasks, user["username"], action)
-
     except Exception as e:
-        # If an error occurs during download or zipping, log the error
         action = f"failed to download Instagram content and caption: {content_url_str} with error: {str(e)}"
         log_user_activity(request, background_tasks, user["username"], action)
         raise HTTPException(status_code=500, detail="Failed to download Instagram content.") from e
 
-    return FileResponse(path=zip_file_path, media_type='application/zip', filename=f"{shortcode}.zip")
+    log_user_activity(request, background_tasks, user["username"], action)
+    return FileResponse(path=zip_file_path, media_type='application/zip', filename=f"instagram_content.zip")

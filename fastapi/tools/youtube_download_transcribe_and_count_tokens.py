@@ -92,4 +92,5 @@ async def transcribe_and_count_tokens(
     log_message_end = f"{user['username']} completed transcription successfully for '{video_title}' with {token_count} tokens."
     background_tasks.add_task(send_log_to_discord, log_message_end)
 
-    return JSONResponse(content={"video_title": video_title, "token_count": token_count})
+    # Include transcription in the response
+    return JSONResponse(content={"video_title": video_title, "token_count": token_count, "transcription": transcription})
