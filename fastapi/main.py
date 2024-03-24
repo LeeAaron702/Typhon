@@ -15,7 +15,7 @@ from utils.logger import log_user_activity, DISCORD_WEBHOOK_URL
 
 # from tools.youtube_download_transcribe_media import router as tm_router
 # from tools.bulk_image_compressor import router as bic_router
-from tools.instagram_audio_video_analyzer import router as iava_router
+# from tools.instagram_audio_video_analyzer import router as iava_router
 # from tools.calculate_token_count import router as tc_router
 # from tools.youtube_download_transcribe_and_count_tokens import router as ydtact_router
 
@@ -23,8 +23,12 @@ from tools.youtube_downloader import router as yt_router
 from tools.instagram_downloader import router as id_router 
 from tools.audio_video_separator import router as av_router
 from tools.transcribe_media import router as tm_router 
-from tools.token_counter import router as tc_router
-from tools.video_analysis import router as va_router
+# from tools.token_counter import router as tc_router
+from tools.summarize_transcript import router as st_router
+from tools.summarize_video import router as sv_router
+from tools.summarize_transcript_and_video import router as stv_router
+
+# from tools.video_analysis import router as va_router
 
 app = FastAPI()
 
@@ -44,8 +48,12 @@ app.include_router(av_router, prefix="/tools")
 app.include_router(yt_router, prefix="/tools")
 app.include_router(id_router, prefix="/tools") 
 app.include_router(tm_router, prefix="/tools") 
-app.include_router(tc_router, prefix="/tools") 
-app.include_router(va_router, prefix="/tools") 
+# app.include_router(tc_router, prefix="/tools") 
+app.include_router(st_router, prefix="/tools") 
+app.include_router(sv_router, prefix="/tools") 
+app.include_router(stv_router, prefix="/tools") 
+
+# app.include_router(va_router, prefix="/tools") 
 
 # app.include_router(tm_router, prefix="/tools")
 # app.include_router(bic_router, prefix="/tools")

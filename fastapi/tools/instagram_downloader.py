@@ -16,25 +16,21 @@ router = APIRouter()
 class InstagramContentRequest(BaseModel):
     content_url: str
 
-PROCESSED_DIR = "processed/content"
+PROCESSED_DIR = "processed"
 
 # Configure Instaloader for a wider range of content
 L = instaloader.Instaloader(download_pictures=True, download_videos=True, download_video_thumbnails=True, download_comments=False, save_metadata=True, post_metadata_txt_pattern='')
 
-def download_instagram_content_util(content_url, content_specific_dir):
+def download_instagram_content_util(content_url, shortcode):
     """
-    Parses the Instagram content URL to extract the shortcode, then downloads Instagram content to a specified directory and creates a zip file.
+    Downloads Instagram content to a directory named after the shortcode and creates a zip file.
     
     :param content_url: The full URL of the Instagram content to download.
-    :param content_specific_dir: The directory to save the downloaded content.
+    :param shortcode: The shortcode extracted from the content URL.
     :return: Path to the created zip file.
     """
-    content_pattern = re.compile(r'https?://www.instagram.com/(reel|p)/([^/?#&]+)')
-    match = content_pattern.search(content_url)
-    if not match:
-        raise ValueError("Invalid Instagram URL format.")
-    
-    shortcode = match.group(2)
+    content_specific_dir = os.path.join(PROCESSED_DIR, shortcode)
+    os.makedirs(content_specific_dir, exist_ok=True)  # Ensure the directory exists
     
     try:
         post = instaloader.Post.from_shortcode(L.context, shortcode)
@@ -54,8 +50,6 @@ def download_instagram_content_util(content_url, content_specific_dir):
         raise e
     
 
-# Configure Instaloader instance
-L = instaloader.Instaloader(download_pictures=True, download_videos=True, download_video_thumbnails=True, download_comments=False, save_metadata=True, post_metadata_txt_pattern='')
 
 def download_instagram_content_for_processing(content_url: str, output_dir: str) -> (str, str):
     """
@@ -98,21 +92,22 @@ def download_instagram_content_for_processing(content_url: str, output_dir: str)
 async def download_instagram_content(
     request: Request,
     background_tasks: BackgroundTasks,
-    content_request: InstagramContentRequest,  # Renamed for clarity
+    content_request: InstagramContentRequest,
     user: dict = Depends(get_current_user),
 ):
     content_url_str = content_request.content_url
     if not content_url_str:
         raise HTTPException(status_code=400, detail="Instagram content URL must be provided.")
 
-    shortcode = None  # Initialization before extraction in the utility function
-    content_specific_dir = os.path.join(PROCESSED_DIR, "temp")  # Temp directory placeholder
-
-    if not os.path.exists(content_specific_dir):
-        os.makedirs(content_specific_dir, exist_ok=True)
+    # Extract the shortcode directly in this function
+    content_pattern = re.compile(r'https?://www.instagram.com/(reel|p)/([^/?#&]+)')
+    match = content_pattern.search(content_url_str)
+    if not match:
+        raise HTTPException(status_code=400, detail="Invalid Instagram URL format.")
+    shortcode = match.group(2)
 
     try:
-        zip_file_path = download_instagram_content_util(content_url_str, content_specific_dir)
+        zip_file_path = download_instagram_content_util(content_url_str, shortcode)
         action = f"successfully downloaded Instagram content and caption: {content_url_str}"
     except Exception as e:
         action = f"failed to download Instagram content and caption: {content_url_str} with error: {str(e)}"
@@ -120,4 +115,4 @@ async def download_instagram_content(
         raise HTTPException(status_code=500, detail="Failed to download Instagram content.") from e
 
     log_user_activity(request, background_tasks, user["username"], action)
-    return FileResponse(path=zip_file_path, media_type='application/zip', filename=f"instagram_content.zip")
+    return FileResponse(path=zip_file_path, media_type='application/zip', filename=f"{shortcode}.zip")
