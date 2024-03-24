@@ -119,12 +119,11 @@ def get_frame_description(frame_path: str) -> str:
         "temperature": 0.5,
     }
     result = openai.ChatCompletion.create(**params)
-    print(result)
     description = result.choices[0].message.content
-    total_tokens = result.usage['total_tokens']  
+    frame_total_tokens = result.usage['total_tokens']  
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{current_time}] Description obtained: {description}, {total_tokens}")
-    return description, total_tokens
+    print(f"[{current_time}] Description obtained: {description}, frame_total_tokens: {frame_total_tokens}")
+    return description, frame_total_tokens
 
 
 async def generate_final_summary(descriptions: List[str], transcription: str, vid_dir: str, url: str) -> (str, str):

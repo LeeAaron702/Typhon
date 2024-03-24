@@ -60,7 +60,7 @@ async def summarize_text(transcript: str) -> str:
 
 
 # Define a function to calculate the total tokens, including the prompt and summary
-async def total_token_count(transcript: str) -> int:
+async def total_prompt_transcript_token_count(transcript: str) -> int:
     # Calculate the tokens for the given transcript
     # transcript_tokens = calculate_token_count(transcript)
 
@@ -75,8 +75,8 @@ async def total_token_count(transcript: str) -> int:
     max_response_tokens = 600
 
     # Sum up the tokens
-    total_tokens = prompt_tokens + max_response_tokens
-    return total_tokens
+    total_transcript_tokens = prompt_tokens + max_response_tokens
+    return total_transcript_tokens
 
 
 @router.post("/audio-summary/", tags=["Summarize Audio from a Video"])
@@ -93,12 +93,12 @@ async def audio_summary(
     )
 
     # Calculate the total tokens
-    total_tokens = await total_token_count(transcription)
+    total_transcript_tokens = await total_prompt_transcript_token_count(transcription)
 
     summary = ""
     if request.confirm_summary:
         summary = await summarize_text(transcription)
 
     return TranscriptProcessResponse(
-        transcript=transcription, token_count=total_tokens, summary=summary
+        transcript=transcription, token_count=total_transcript_tokens, summary=summary
     )

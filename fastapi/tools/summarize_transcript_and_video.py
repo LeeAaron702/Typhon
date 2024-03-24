@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from fastapi.responses import FileResponse
 from typing import List
 import openai
 from dotenv import load_dotenv
@@ -27,10 +26,11 @@ class SummaryRequest(BaseModel):
 
 class SummaryResponse(BaseModel):
     token_count: int
+    estimate_token_count: int
     summary: str
     zip_file_path: str
 
-async def summarize_text(transcript: str, aggregated_frame_descriptions: str) -> str:
+async def summarize_text(transcript: str, aggregated_frame_descriptions: str) -> (str, int):
     """
     Summarize the provided transcript and frame descriptions using GPT-4.
     """
@@ -45,14 +45,20 @@ async def summarize_text(transcript: str, aggregated_frame_descriptions: str) ->
     
     Please provide a structured summary of the video's content, focusing on key themes, narratives, and visual elements.
     """
-    result = openai.Completion.create(
-        model="gpt-4",
-        prompt=prompt,
-        max_tokens=800,
-        temperature=0.5,
-    )
-    summary = result.choices[0].text.strip()
-    return summary
+    prompt_message = {
+        "role": "user",
+        "content": prompt,
+    }
+    params = {
+        "model": "gpt-4",
+        "messages": [prompt_message],
+        "max_tokens": 600,
+        "temperature": 0,
+    }
+    result = openai.ChatCompletion.create(**params)
+    summary = result.choices[0].message.content
+    final_summary_token_estimate = calculate_token_count(prompt) + 600
+    return summary, final_summary_token_estimate
 
 async def process_summary(request: SummaryRequest) -> SummaryResponse:
     source_type = determine_source_type(request.source_url)
@@ -60,23 +66,36 @@ async def process_summary(request: SummaryRequest) -> SummaryResponse:
         raise HTTPException(status_code=400, detail="Unsupported URL type provided.")
     
     transcription, content_dir = await process_media_transcription(request.source_url, source_type)
+    print(transcription)
     video_path = await download_and_extract_video(request.source_url, PROCESSED_DIR)
     frames_dir = Path(video_path).parent / "extracted_frames"
     if not frames_dir.exists():
         frames_dir.mkdir(parents=True, exist_ok=True)
 
+    transcription_file_path = Path(content_dir) / "transcription.txt"
+    with open(transcription_file_path, "w", encoding="utf-8") as f:
+        f.write(transcription)
+
     frames = extract_frames(video_path, str(frames_dir))
     frame_descriptions = []
-    for frame in frames:
-        description, _ = await asyncio.to_thread(get_frame_description, frame)  # Assuming implementation provided in your context
-        frame_descriptions.append(description)
-        await asyncio.sleep(0.1)  # Avoid overwhelming the API
+    token_counter = 0
+    summary = ""
+    zip_file_path = ""
 
-    aggregated_frame_descriptions = " ".join(frame_descriptions)
-    
+    for frame in frames:
+        frame_total_tokens = 280  # Assume a base token count per frame for estimation
+        if request.confirm_summary:
+            description, tokens_from_description = await asyncio.to_thread(get_frame_description, frame)
+            frame_descriptions.append(description)
+            token_counter += tokens_from_description  # Add the actual tokens from description
+        else:
+            token_counter += frame_total_tokens  # Add the estimated tokens if not confirming summary
+
     if request.confirm_summary:
-        summary = await summarize_text(transcription, aggregated_frame_descriptions)
-        
+        aggregated_frame_descriptions = " ".join(frame_descriptions)
+        summary, final_summary_token_estimate = await summarize_text(transcription, aggregated_frame_descriptions)
+        token_counter += final_summary_token_estimate
+
         # Save the summary to a text file
         summary_file_path = Path(content_dir) / "final_summary.txt"
         with open(summary_file_path, "w", encoding="utf-8") as f:
@@ -90,12 +109,17 @@ async def process_summary(request: SummaryRequest) -> SummaryResponse:
                 for file in files:
                     file_path = os.path.join(root, file)
                     zipf.write(file_path, arcname=os.path.relpath(file_path, start=content_dir))
-            
-        # Add the summary to the response
-        token_count = calculate_token_count(summary)  # Assuming implementation provided in your context
-        return SummaryResponse(token_count=token_count, summary=summary, zip_file_path=str(zip_file_path))
-    else:
-        return SummaryResponse(token_count=0, summary="", zip_file_path="")
+        zip_file_path = str(zip_file_path)  # Convert Path object to string for JSON serialization
+
+    # Calculate the estimated token count based on frames and other elements
+    estimate_token_count = token_counter
+
+    return SummaryResponse(
+        token_count=calculate_token_count(summary) if summary else 0,
+        estimate_token_count=estimate_token_count,
+        summary=summary,
+        zip_file_path=zip_file_path
+    )
 
 @router.post("/summarize_transcript_and_video/", tags=['Summarize Audio & Video'], response_model=SummaryResponse)
 async def summarize_transcript_and_video(request: SummaryRequest, user: dict = Depends(get_current_user)) -> SummaryResponse:
