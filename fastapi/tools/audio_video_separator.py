@@ -5,9 +5,10 @@ from moviepy.editor import VideoFileClip
 import os
 from pathlib import Path
 import zipfile
+from pydantic import BaseModel
 
-from auth import get_current_user
-from utils.logger import log_user_activity
+from utilities.auth import get_current_user
+from utilities.logger import log_user_activity
 from .instagram_downloader import download_instagram_content_for_processing
 from .youtube_downloader import download_youtube_video_util
 
@@ -15,13 +16,17 @@ router = APIRouter()
 
 PROCESSED_DIR = "processed"
 
+class MediaExtractionRequest(BaseModel):
+    source_url: str
+
 @router.post("/extract_and_package_media/", tags=['Download Youtube or Instagram Video & Audio'])
 async def extract_and_package_media(
     request: Request,
     background_tasks: BackgroundTasks,
-    source_url: str,
+    extraction_request: MediaExtractionRequest,  # Use Pydantic model here
     user: dict = Depends(get_current_user),
 ):
+    source_url = extraction_request.source_url
     source_type = determine_source_type(source_url)
     if source_type == "unsupported":
         raise HTTPException(status_code=400, detail="Unsupported URL type provided.")
@@ -29,7 +34,7 @@ async def extract_and_package_media(
     audio_path, content_dir = extract_audio(source_url, source_type, PROCESSED_DIR)
     
     # Create a zip file of the content directory
-    zip_file_path = os.path.join(PROCESSED_DIR, f"{Path(content_dir).stem}_media_package.zip")
+    zip_file_path = os.path.join(PROCESSED_DIR, f"{Path(content_dir).stem}.zip")
     with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(content_dir):
             for file in files:

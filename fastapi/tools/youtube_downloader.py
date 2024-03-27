@@ -5,8 +5,8 @@ import os
 import re
 from pathlib import Path
 
-from auth import get_current_user
-from utils.logger import log_user_activity  # Ensure this is imported
+from utilities.auth import get_current_user
+from utilities.logger import log_user_activity  # Ensure this is imported
 
 router = APIRouter()
 

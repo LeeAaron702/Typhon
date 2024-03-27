@@ -3,11 +3,15 @@ from pydantic import BaseModel
 import openai
 from dotenv import load_dotenv
 import os
+from sqlalchemy.orm import Session
+
 
 from tools.transcribe_media import process_media_transcription, determine_source_type
 from tools.token_counter import calculate_token_count
 
-from auth import get_current_user
+from database import get_db 
+from utilities.auth import get_current_user
+from utilities.increment_ai_api_counter import increment_ai_api_counter
 
 router = APIRouter()
 load_dotenv()  # Load environment variables from .env file
@@ -82,7 +86,8 @@ async def total_prompt_transcript_token_count(transcript: str) -> int:
 @router.post("/audio-summary/", tags=["Summarize Audio from a Video"])
 async def audio_summary(
     request: TranscriptProcessRequest, 
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)  
 ) -> TranscriptProcessResponse:
     source_type = determine_source_type(request.source_url)
     if source_type == "unsupported":
@@ -98,6 +103,7 @@ async def audio_summary(
     summary = ""
     if request.confirm_summary:
         summary = await summarize_text(transcription)
+        increment_ai_api_counter(user_id=user["id"], db_session=db)
 
     return TranscriptProcessResponse(
         transcript=transcription, token_count=total_transcript_tokens, summary=summary

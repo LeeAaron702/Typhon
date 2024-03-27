@@ -5,8 +5,8 @@ import os
 import shutil
 import zipfile
 from typing import List
-from auth import get_current_user
-from utils.logger import log_user_activity  # Import the logging functions
+from utilities.auth import get_current_user
+from utilities.logger import log_user_activity  # Import the logging functions
 
 router = APIRouter()
 

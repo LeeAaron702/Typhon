@@ -3,14 +3,18 @@ from fastapi.responses import FileResponse
 import os
 from pathlib import Path
 import zipfile
-from auth import get_current_user
-from utils.logger import log_user_activity
+from utilities.auth import get_current_user
+from utilities.logger import log_user_activity
 from .audio_video_separator import extract_audio, determine_source_type
 from faster_whisper import WhisperModel
 from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel
 
 router = APIRouter()
 PROCESSED_DIR = "processed"
+
+class TranscriptionRequest(BaseModel):
+    source_url: str
 
 async def transcribe_audio(audio_path: str) -> str:
     def blocking_transcribe():
@@ -35,13 +39,14 @@ async def process_media_transcription(source_url: str, source_type: str) -> Path
     return transcription, content_dir
 
 
-@router.post("/transcribe_media/", tags=['Download Youtube or Instagram Video & Audio & Create Transcription'])
+@router.post("/transcribe_media/", tags=['Create Transcription'])
 async def transcribe_media_download(
     request: Request,
     background_tasks: BackgroundTasks,
-    source_url: str,
+    extraction_request: TranscriptionRequest,
     user: dict = Depends(get_current_user)
 ):
+    source_url = extraction_request.source_url
     source_type = determine_source_type(source_url)
     if source_type == "unsupported":
         raise HTTPException(status_code=400, detail="Unsupported URL type provided.")

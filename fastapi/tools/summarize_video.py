@@ -1,6 +1,3 @@
-from fastapi import APIRouter, HTTPException, Form, Depends
-from pydantic import BaseModel
-from pathlib import Path
 import os
 import cv2
 import shutil
@@ -8,13 +5,20 @@ import openai
 import base64
 import datetime
 import asyncio
+
+from fastapi import APIRouter, HTTPException, Form, Depends
+from pydantic import BaseModel
+from pathlib import Path
 from typing import List
+from sqlalchemy.orm import Session
 
 from tools.audio_video_separator import determine_source_type
 from tools.youtube_downloader import download_youtube_video_util
 from tools.instagram_downloader import download_instagram_content_for_processing
 
-from auth import get_current_user
+from utilities.auth import get_current_user
+from utilities.increment_ai_api_counter import increment_ai_api_counter
+from database import get_db 
 
 
 router = APIRouter()
@@ -174,7 +178,8 @@ async def generate_final_summary(descriptions: List[str], transcription: str, vi
 @router.post("/video-summary/", tags=['Summarize Video'], response_model=VideoAnalysisResponse)
 async def video_summary(
     request: VideoAnalysisRequest,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
     ):
     video_path = await download_and_extract_video(request.url, processed_dir)
     video_dir = Path(video_path).parent
@@ -204,6 +209,8 @@ async def video_summary(
         
         # Optionally, you can log or use total_tokens_used as needed
         print(f"Total OpenAI API tokens used: {total_tokens_used}")  # Print the total tokens used if needed
+        increment_ai_api_counter(user_id=user["id"], db_session=db)
+
         return VideoAnalysisResponse(
             estimated_total_token_usage=estimated_tokens, 
             frame_descriptions=frame_descriptions, 
